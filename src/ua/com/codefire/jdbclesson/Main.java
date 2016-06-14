@@ -12,6 +12,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -37,7 +38,7 @@ public class Main {
 
         List<String> tableList = new ArrayList<>();
 
-        try (Connection conn = DriverManager.getConnection("jdbc:mysql://127.0.0.1:3306/test", "root", "00000")) {
+        try (Connection conn = DriverManager.getConnection("jdbc:mysql://127.0.0.1:3306/test", "student", "12345")) {
 
             ResultSet rsTables = conn.createStatement().executeQuery("SHOW TABLES");
 
@@ -68,7 +69,7 @@ public class Main {
             }
         }
 
-        try (Connection conn = DriverManager.getConnection("jdbc:mysql://127.0.0.1:3306/test", "root", "00000")) {
+        try (Connection conn = DriverManager.getConnection("jdbc:mysql://127.0.0.1:3306/test", "student", "12345")) {
             String selectedTableName = tableList.get(tableNumber - 1);
             String selectQuery = String.format("SELECT * FROM `%s`", selectedTableName);
 
@@ -107,25 +108,29 @@ public class Main {
             System.out.println("");
 
             System.out.print("|");
-            try {
-                FileOutputStream fos = new FileOutputStream(nameFile, true);
+            try (FileOutputStream fos = new FileOutputStream(nameFile, true)) {
+
                 for (int i = 1; i <= meta.getColumnCount(); i++) {
                     String columnName = meta.getColumnName(i);
-                    String columnType = meta.getColumnTypeName(i);
+//                    String columnType = meta.getColumnTypeName(i);
 
                     int columnSize = meta.getColumnDisplaySize(i);
-                    if (columnType.equals("VARCHAR") && columnSize > 50) {
-                        columnType = "text";
+
+                    switch (meta.getColumnType(1)) {
+                        case Types.DATE: {
+                            String line = String.format("  `%s` %s", columnName, Types.DATE);
+                            byte[] bytes = line.getBytes();
+                            fos.write(bytes);
+                        }
+                        break;
+                        default: {
+                            String line = String.format("  `%s` %s(%s)", columnName, meta.getColumnTypeName(i), columnSize);
+                            byte[] bytes = line.getBytes();
+                            fos.write(bytes);
+                        }
+                        break;
                     }
-                    if (columnType.equals("DATE")) {
-                        String line = String.format("  `%s` %s", columnName, columnType);
-                        byte[] bytes = line.getBytes();
-                        fos.write(bytes);
-                    } else {
-                        String line = String.format("  `%s` %s(%s)", columnName, columnType, columnSize);
-                        byte[] bytes = line.getBytes();
-                        fos.write(bytes);
-                    }
+
                     if (i < meta.getColumnCount()) {
                         byte[] bytes = ",\n".getBytes();
                         fos.write(bytes);
@@ -134,21 +139,30 @@ public class Main {
                 byte[] bytes = "\n);\n".getBytes();
                 fos.write(bytes);
 
-                String linesG = String.format("INSERT INTO `%s` VALUES\n", selectedTableName);
-
-                bytes = linesG.getBytes();
-
-                fos.write(bytes);
+                StringBuilder sbQueries = new StringBuilder(String.format("INSERT INTO `%s` VALUES\n", selectedTableName));
 
                 while (rs.next()) {
-                    String oneRow = "";
+                    sbQueries.append("(");
 
                     for (int i = 1; i <= columnCount; i++) {
-                        System.out.println(rs.getObject(i));
-                    }
-                }
-                fos.close();
+                        Object value = rs.getObject(i);
 
+                        if (value != null) {
+                            sbQueries.append("'").append(rs.getObject(i)).append("'");
+                        } else {
+                            sbQueries.append("NULL");
+                        }
+
+                        if (i < columnCount) {
+                            sbQueries.append(", ");
+                        }
+                    }
+                    sbQueries.append(")");
+
+                    sbQueries.append(rs.isLast() ? ";\n" : ",\n");
+                }
+
+                fos.write(sbQueries.toString().getBytes());
             } catch (IOException ex) {
                 ex.printStackTrace();
             }
